@@ -10,6 +10,9 @@ class TestChryslerSafety(common.CarSafetyTest, common.MotorTorqueSteeringSafetyT
   DBC = "chrysler_pacifica_2017_hybrid_generated"
   SAFETY_MODEL = CarParams.SafetyModel.chrysler
 
+  GAS_SIGNALS = ("Accelerator_Position",)
+  VEHICLE_MOVING_SIGNALS = ("SPEED_LEFT", "SPEED_RIGHT")
+
   TX_MSGS = [[0x23B, 0], [0x292, 0], [0x2A6, 0]]
   RELAY_MALFUNCTION_ADDRS = {0: (0x292, 0x2A6)}
   FWD_BLACKLISTED_ADDRS = {2: [0x292, 0x2A6]}
@@ -69,6 +72,7 @@ class TestChryslerSafety(common.CarSafetyTest, common.MotorTorqueSteeringSafetyT
 
 class TestChryslerRamDTSafety(TestChryslerSafety):
   DBC = "chrysler_ram_dt_generated"
+  VEHICLE_MOVING_SIGNALS = ("Vehicle_Speed",)
 
   SAFETY_PARAM = ChryslerSafetyFlags.RAM_DT
 
@@ -91,6 +95,7 @@ class TestChryslerRamDTSafety(TestChryslerSafety):
 
 class TestChryslerRamHDSafety(TestChryslerSafety):
   DBC = "chrysler_ram_hd_generated"
+  VEHICLE_MOVING_SIGNALS = ("Vehicle_Speed",)
 
   SAFETY_PARAM = ChryslerSafetyFlags.RAM_HD
 

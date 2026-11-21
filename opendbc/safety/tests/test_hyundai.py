@@ -25,8 +25,8 @@ def checksum(msg):
         chksum += bit
     chksum = (chksum ^ 9) & 0xF
     ret = bytearray(dat)
-    ret[5] |= (chksum & 0x3) << 6
-    ret[7] |= (chksum & 0xc) << 4
+    ret[5] = (ret[5] & 0x3F) | ((chksum & 0x3) << 6)
+    ret[7] = (ret[7] & 0x3F) | ((chksum & 0xc) << 4)
   else:
     for i, b in enumerate(dat):
       if addr in [0x260, 0x421] and i == 7:
@@ -38,7 +38,9 @@ def checksum(msg):
       chksum += sum(divmod(b, 16))
     chksum = (16 - chksum) % 16
     ret = bytearray(dat)
-    ret[6 if addr == 0x394 else 7] |= chksum << (4 if addr == 0x421 else 0)
+    checksum_byte = 6 if addr == 0x394 else 7
+    shift = 4 if addr == 0x421 else 0
+    ret[checksum_byte] = (ret[checksum_byte] & ~(0xF << shift)) | (chksum << shift)
 
   return addr, ret, bus
 
@@ -49,6 +51,8 @@ class TestHyundaiSafety(HyundaiButtonBase, common.CarSafetyTest, common.DriverTo
 
   TX_MSGS = [[0x340, 0], [0x4F1, 0], [0x485, 0]]
   STANDSTILL_THRESHOLD = 12  # 0.375 kph
+  GAS_SIGNALS = ("CF_Ems_AclAct",)
+  VEHICLE_MOVING_SIGNALS = ("WHL_SPD_FL", "WHL_SPD_RR")  # only two wheels are checked
   RELAY_MALFUNCTION_ADDRS = {0: (0x340, 0x485)}  # LKAS11
   FWD_BLACKLISTED_ADDRS = {2: [0x340, 0x485]}
 
@@ -85,9 +89,9 @@ class TestHyundaiSafety(HyundaiButtonBase, common.CarSafetyTest, common.DriverTo
     self.__class__.cnt_brake += 1
     return self.packer.make_can_msg_safety("TCS13", 0, values, fix_checksum=checksum)
 
-  def _speed_msg(self, speed, wheels=("FL", "FR", "RL", "RR")):
+  def _speed_msg(self, speed):
     # safety doesn't scale, so undo the scaling
-    values = {"WHL_SPD_%s" % s: speed * 0.03125 for s in wheels}
+    values = {"WHL_SPD_%s" % s: speed * 0.03125 for s in ("FL", "FR", "RL", "RR")}
     values["WHL_SPD_AliveCounter_LSB"] = (self.cnt_speed % 16) & 0x3
     values["WHL_SPD_AliveCounter_MSB"] = (self.cnt_speed % 16) >> 2
     self.__class__.cnt_speed += 1
@@ -113,12 +117,6 @@ class TestHyundaiSafety(HyundaiButtonBase, common.CarSafetyTest, common.DriverTo
     self.assertTrue(self._rx(self.packer.make_can_msg_safety("E_EMS11", 0, {"Accel_Pedal_Pos": 1, "CR_Vcu_AccPedDep_Pos": 1})))
     self.assertFalse(self.safety.get_gas_pressed_prev())
 
-  def test_vehicle_moving_single_wheel(self):
-    # vehicle is moving if any checked wheel is above standstill
-    for wheel in ("FL", "RR"):
-      self.assertTrue(self._rx(self._speed_msg(self.STANDSTILL_THRESHOLD + 1, wheels=(wheel,))))
-      self.assertTrue(self.safety.get_vehicle_moving())
-
 
 class TestHyundaiSafetyAltLimits(TestHyundaiSafety):
   SAFETY_PARAM = HyundaiSafetyFlags.ALT_LIMITS
@@ -142,6 +140,7 @@ class TestHyundaiSafetyCameraSCC(TestHyundaiSafety):
 
 class TestHyundaiSafetyFCEV(TestHyundaiSafety):
   SAFETY_PARAM = HyundaiSafetyFlags.FCEV_GAS
+  GAS_SIGNALS = ("ACCELERATOR_PEDAL",)
 
   def _user_gas_msg(self, gas):
     values = {"ACCELERATOR_PEDAL": gas}
@@ -155,6 +154,7 @@ class TestHyundaiLegacySafety(TestHyundaiSafety):
 class TestHyundaiLegacySafetyEV(TestHyundaiSafety):
   SAFETY_MODEL = CarParams.SafetyModel.hyundaiLegacy
   SAFETY_PARAM = HyundaiSafetyFlags.EV_GAS
+  GAS_SIGNALS = ("Accel_Pedal_Pos",)
 
   def _user_gas_msg(self, gas):
     values = {"Accel_Pedal_Pos": gas}
@@ -164,6 +164,7 @@ class TestHyundaiLegacySafetyEV(TestHyundaiSafety):
 class TestHyundaiLegacySafetyHEV(TestHyundaiSafety):
   SAFETY_MODEL = CarParams.SafetyModel.hyundaiLegacy
   SAFETY_PARAM = HyundaiSafetyFlags.HYBRID_GAS
+  GAS_SIGNALS = ("CR_Vcu_AccPedDep_Pos",)
 
   def _user_gas_msg(self, gas):
     values = {"CR_Vcu_AccPedDep_Pos": gas}

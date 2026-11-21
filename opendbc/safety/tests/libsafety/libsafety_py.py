@@ -99,5 +99,6 @@ def make_CANPacket(addr: int, bus: int, dat):
   ret[0].addr = addr
   ret[0].data_len_code = LEN_TO_DLC[len(dat)]
   ret[0].bus = bus
-  ret[0].data = bytes(dat)
+  # fill the buffer past the message length with set bits, safety must never read them
+  ret[0].data = bytes(dat) + b'\xff' * (len(ret[0].data) - len(dat))
   return ret

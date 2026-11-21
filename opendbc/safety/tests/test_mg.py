@@ -12,6 +12,9 @@ class TestMGSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTest):
   DBC = "mg"
   SAFETY_MODEL = CarParams.SafetyModel.mg
 
+  GAS_SIGNALS = ("EPTAccelActuPosHSC2",)
+  VEHICLE_MOVING_SIGNALS = ("VehSpdAvgHSC2",)
+
   TX_MSGS = [[0x1fd, 0], ]
   RELAY_MALFUNCTION_ADDRS = {0: (0x1fd,)}
   FWD_BLACKLISTED_ADDRS = {2: [0x1fd,]}

@@ -10,6 +10,10 @@ class TestSubaruPreglobalSafety(common.CarSafetyTest, common.DriverTorqueSteerin
   SAFETY_MODEL = CarParams.SafetyModel.subaruPreglobal
 
   DBC = "subaru_outback_2015_generated"
+
+  GAS_SIGNALS = ("Throttle_Pedal",)
+  VEHICLE_MOVING_SIGNALS = ("FR", "RL", "RR")  # see test_front_left_wheel_speed_bits
+
   TX_MSGS = [[0x161, 0], [0x164, 0]]
   RELAY_MALFUNCTION_ADDRS = {0: (0x164, 0x161)}
   FWD_BLACKLISTED_ADDRS = {2: [0x161, 0x164]}
@@ -51,6 +55,14 @@ class TestSubaruPreglobalSafety(common.CarSafetyTest, common.DriverTorqueSteerin
   def _pcm_status_msg(self, enable):
     values = {"Cruise_Activated": enable}
     return self.packer.make_can_msg_safety("CruiseControl", 0, values)
+
+  def test_front_left_wheel_speed_bits(self):
+    # FIXME: the safety ignores the low 12 bits of FL, so only its top 4 bits mean moving
+    for bit in range(16):
+      with self.packer.force_raw_values({"FL": 1 << bit}):
+        msg = self._speed_msg(0)
+      self.assertTrue(self._rx(msg))
+      self.assertEqual(bit >= 12, self.safety.get_vehicle_moving(), bit)
 
 
 class TestSubaruPreglobalReversedDriverTorqueSafety(TestSubaruPreglobalSafety):

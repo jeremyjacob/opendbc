@@ -36,7 +36,8 @@ class TestTeslaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest, 
   TX_MSGS = [[MSG_DAS_steeringControl, 0], [MSG_APS_eacMonitor, 0], [MSG_DAS_Control, 0]]
 
   STANDSTILL_THRESHOLD = 0.1
-  GAS_PRESSED_THRESHOLD = 3
+  GAS_SIGNALS = ("DI_accelPedalPos",)
+  VEHICLE_MOVING_SIGNALS = ()  # ESP_vehicleStandstillSts is inverted, see test_vehicle_moving
 
   # Angle control limits
   STEER_ANGLE_MAX = 360  # deg

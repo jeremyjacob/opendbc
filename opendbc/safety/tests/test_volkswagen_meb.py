@@ -30,6 +30,8 @@ MSG_LDW_02     = 0x397
 
 class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteeringSafetyTest):
   STANDSTILL_THRESHOLD = 0
+  GAS_SIGNALS = ("Accel_Pedal_Pressure",)
+  VEHICLE_MOVING_SIGNALS = ("VL_Radgeschw", "VR_Radgeschw", "HL_Radgeschw", "HR_Radgeschw")
 
   MAX_CURVATURE = 29105
   MAX_CURVATURE_TEST = 0.195

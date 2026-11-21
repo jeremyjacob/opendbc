@@ -10,13 +10,19 @@ from opendbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongit
 # All combinations of radar/camera-SCC and gas/hybrid/EV cars
 ALL_GAS_EV_HYBRID_COMBOS = [
   # Radar SCC
-  {"GAS_MSG": ("ACCELERATOR_BRAKE_ALT", "ACCELERATOR_PEDAL_PRESSED"), "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": 0},
-  {"GAS_MSG": ("ACCELERATOR", "ACCELERATOR_PEDAL"), "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.EV_GAS},
-  {"GAS_MSG": ("ACCELERATOR_ALT", "ACCELERATOR_PEDAL"), "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.HYBRID_GAS},
+  {"GAS_MSG": "ACCELERATOR_BRAKE_ALT", "GAS_SIGNALS": ("ACCELERATOR_PEDAL_PRESSED",),
+   "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": 0},
+  {"GAS_MSG": "ACCELERATOR", "GAS_SIGNALS": ("ACCELERATOR_PEDAL",),
+   "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.EV_GAS},
+  {"GAS_MSG": "ACCELERATOR_ALT", "GAS_SIGNALS": ("ACCELERATOR_PEDAL",),
+   "SCC_BUS": 0, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.HYBRID_GAS},
   # Camera SCC
-  {"GAS_MSG": ("ACCELERATOR_BRAKE_ALT", "ACCELERATOR_PEDAL_PRESSED"), "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.CAMERA_SCC},
-  {"GAS_MSG": ("ACCELERATOR", "ACCELERATOR_PEDAL"), "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CAMERA_SCC},
-  {"GAS_MSG": ("ACCELERATOR_ALT", "ACCELERATOR_PEDAL"), "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.HYBRID_GAS | HyundaiSafetyFlags.CAMERA_SCC},
+  {"GAS_MSG": "ACCELERATOR_BRAKE_ALT", "GAS_SIGNALS": ("ACCELERATOR_PEDAL_PRESSED",),
+   "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.CAMERA_SCC},
+  {"GAS_MSG": "ACCELERATOR", "GAS_SIGNALS": ("ACCELERATOR_PEDAL",),
+   "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CAMERA_SCC},
+  {"GAS_MSG": "ACCELERATOR_ALT", "GAS_SIGNALS": ("ACCELERATOR_PEDAL",),
+   "SCC_BUS": 2, "EXTRA_SAFETY_PARAM": HyundaiSafetyFlags.HYBRID_GAS | HyundaiSafetyFlags.CAMERA_SCC},
 ]
 
 
@@ -27,6 +33,7 @@ class TestHyundaiCanfdBase(HyundaiButtonBase, common.CarSafetyTest, common.Drive
 
   TX_MSGS = [[0x50, 0], [0x1CF, 1], [0x2A4, 0]]
   STANDSTILL_THRESHOLD = 12  # 0.375 kph
+  VEHICLE_MOVING_SIGNALS = ("WHL_SpdFLVal", "WHL_SpdFRVal", "WHL_SpdRLVal", "WHL_SpdRRVal")
   FWD_BLACKLISTED_ADDRS = {2: [0x50, 0x2a4]}
 
   MAX_RATE_UP = 2
@@ -46,7 +53,7 @@ class TestHyundaiCanfdBase(HyundaiButtonBase, common.CarSafetyTest, common.Drive
   SCC_BUS = 2
   STEER_BUS = 0
   STEER_MSG = ""
-  GAS_MSG = ("", "")
+  GAS_MSG = ""
   BUTTONS_TX_BUS = 1
 
   def _torque_driver_msg(self, torque):
@@ -57,8 +64,8 @@ class TestHyundaiCanfdBase(HyundaiButtonBase, common.CarSafetyTest, common.Drive
     values = {"StrTqReqVal": torque, "ActToiSta": steer_req}
     return self.packer.make_can_msg_safety(self.STEER_MSG, self.STEER_BUS, values)
 
-  def _speed_msg(self, speed, wheels=("FL", "FR", "RL", "RR")):
-    values = {f"WHL_Spd{pos}Val": speed * 0.03125 for pos in wheels}
+  def _speed_msg(self, speed):
+    values = {f"WHL_Spd{pos}Val": speed * 0.03125 for pos in ("FL", "FR", "RL", "RR")}
     return self.packer.make_can_msg_safety("WHEEL_SPEEDS", self.PT_BUS, values)
 
   def _user_brake_msg(self, brake):
@@ -66,8 +73,8 @@ class TestHyundaiCanfdBase(HyundaiButtonBase, common.CarSafetyTest, common.Drive
     return self.packer.make_can_msg_safety("TCS", self.PT_BUS, values)
 
   def _user_gas_msg(self, gas):
-    values = {self.GAS_MSG[1]: gas}
-    return self.packer.make_can_msg_safety(self.GAS_MSG[0], self.PT_BUS, values)
+    values = {sig: gas for sig in self.GAS_SIGNALS}
+    return self.packer.make_can_msg_safety(self.GAS_MSG, self.PT_BUS, values)
 
   def _pcm_status_msg(self, enable):
     values = {"ACCMode": 1 if enable else 0}
@@ -82,17 +89,11 @@ class TestHyundaiCanfdBase(HyundaiButtonBase, common.CarSafetyTest, common.Drive
     }
     return self.packer.make_can_msg_safety("CRUISE_BUTTONS", bus, values)
 
-  def test_vehicle_moving_single_wheel(self):
-    # vehicle is moving if any checked wheel is above standstill
-    for wheel in ("FL", "FR", "RL", "RR"):
-      self.assertTrue(self._rx(self._speed_msg(self.STANDSTILL_THRESHOLD + 1, wheels=(wheel,))))
-      self.assertTrue(self.safety.get_vehicle_moving())
-
   def test_other_gas_msgs_ignored(self):
     # the gas messages share one RX slot, but only the configured one is parsed
     for msg, sig in (("ACCELERATOR", "ACCELERATOR_PEDAL"), ("ACCELERATOR_ALT", "ACCELERATOR_PEDAL"),
                      ("ACCELERATOR_BRAKE_ALT", "ACCELERATOR_PEDAL_PRESSED")):
-      if msg != self.GAS_MSG[0]:
+      if msg != self.GAS_MSG:
         self._reset_safety_hooks()
         self.assertTrue(self._rx(self.packer.make_can_msg_safety(msg, self.PT_BUS, {sig: 1})))
         self.assertFalse(self.safety.get_gas_pressed_prev())
@@ -184,7 +185,8 @@ class TestHyundaiCanfdLKASteeringEV(TestHyundaiCanfdBase):
   PT_BUS = 1
   SCC_BUS = 1
   STEER_MSG = "LKAS"
-  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+  GAS_MSG = "ACCELERATOR"
+  GAS_SIGNALS = ("ACCELERATOR_PEDAL",)
 
 
 # TODO: Handle ICE and HEV configurations once we see cars that use the new messages
@@ -199,7 +201,8 @@ class TestHyundaiCanfdLKASteeringAltEV(TestHyundaiCanfdBase):
   PT_BUS = 1
   SCC_BUS = 1
   STEER_MSG = "LKAS_ALT"
-  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+  GAS_MSG = "ACCELERATOR"
+  GAS_SIGNALS = ("ACCELERATOR_PEDAL",)
 
 
 class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanfdLKASteeringEV):
@@ -215,7 +218,8 @@ class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanf
   DISABLED_ECU_ACTUATION_MSG = (0x1a0, 1)
 
   STEER_MSG = "LFA"
-  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+  GAS_MSG = "ACCELERATOR"
+  GAS_SIGNALS = ("ACCELERATOR_PEDAL",)
   STEER_BUS = 1
 
   def _accel_msg(self, accel, aeb_req=False, aeb_decel=0, accel_value=None):

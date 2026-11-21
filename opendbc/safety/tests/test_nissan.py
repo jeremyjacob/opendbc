@@ -13,6 +13,8 @@ class TestNissanSafety(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
   TX_MSGS = [[0x169, 0], [0x2b1, 0], [0x4cc, 0], [0x20b, 2], [0x280, 2]]
   GAS_PRESSED_THRESHOLD = 3
+  GAS_SIGNALS = ("GAS_PEDAL",)
+  VEHICLE_MOVING_SIGNALS = ("WHEEL_SPEED_RR", "WHEEL_SPEED_RL")
   RELAY_MALFUNCTION_ADDRS = {0: (0x169, 0x2b1, 0x4cc), 2: (0x280,)}
   FWD_BLACKLISTED_ADDRS = {0: [0x280], 2: [0x169, 0x2b1, 0x4cc]}
 

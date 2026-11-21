@@ -166,6 +166,8 @@ class HondaBase(common.CarSafetyTest):
   BUTTONS_BUS: int  # must be set when inherited, tx on this bus, rx on PT_BUS
 
   RELAY_MALFUNCTION_ADDRS = {0: (0xE4, 0x194)}  # STEERING_CONTROL
+  GAS_SIGNALS = ("PEDAL_GAS",)
+  VEHICLE_MOVING_SIGNALS = ("XMISSION_SPEED",)
 
   def _powertrain_data_msg(self, cruise_on=None, brake_pressed=None, gas_pressed=None):
     # preserve the state

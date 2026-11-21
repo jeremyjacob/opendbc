@@ -19,6 +19,8 @@ MSG_LDW_02 = 0x397      # TX by OP, Lane line recognition and text alerts
 
 class TestVolkswagenMqbSafetyBase(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTest):
   DBC = "vw_mqb"
+  GAS_SIGNALS = ("MO_Fahrpedalrohwert_01",)
+  VEHICLE_MOVING_SIGNALS = ("ESP_VL_Radgeschw_02", "ESP_VR_Radgeschw_02", "ESP_HL_Radgeschw_02", "ESP_HR_Radgeschw_02")
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_01, MSG_LDW_02), 2: (MSG_LH_EPS_03,)}
 
   MAX_RATE_UP = 4

@@ -12,6 +12,9 @@ class TestRivianSafetyBase(common.CarSafetyTest, common.DriverTorqueSteeringSafe
   DBC = "rivian_primary_actuator"
   SAFETY_MODEL = CarParams.SafetyModel.rivian
 
+  GAS_SIGNALS = ("VDM_AcceleratorPedalPosition",)
+  VEHICLE_MOVING_SIGNALS = ("ESP_Vehicle_Speed",)
+
   TX_MSGS = [[0x120, 0], [0x321, 2], [0x162, 2]]
   RELAY_MALFUNCTION_ADDRS = {0: (0x120,), 2: (0x321, 0x162)}
   FWD_BLACKLISTED_ADDRS = {0: [0x321, 0x162], 2: [0x120]}

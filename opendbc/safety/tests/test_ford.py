@@ -36,6 +36,8 @@ class TestFordSafetyBase(common.CarSafetyTest):
   SAFETY_MODEL = CarParams.SafetyModel.ford
 
   STANDSTILL_THRESHOLD = 1
+  GAS_SIGNALS = ("ApedPos_Pc_ActlArb",)
+  VEHICLE_MOVING_SIGNALS = ()  # VehStop_D_Stat is a state, not a speed, see test_vehicle_moving_states
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_ACCDATA_3, MSG_Lane_Assist_Data1, MSG_LateralMotionControl,
                                  MSG_LateralMotionControl2, MSG_IPMA_Data)}
 
@@ -175,6 +177,12 @@ class TestFordSafetyBase(common.CarSafetyTest):
       "TjaButtnOnOffPress": 1 if button == Buttons.TJA_TOGGLE else 0,
     }
     return self.packer.make_can_msg_safety("Steering_Data_FD1", bus, values)
+
+  def test_vehicle_moving_states(self):
+    # moving is every VehStop_D_Stat state but standstill
+    for state in range(4):
+      self.assertTrue(self._rx(self.packer.make_can_msg_safety("DesiredTorqBrk", 0, {"VehStop_D_Stat": state})))
+      self.assertEqual(state != 1, self.safety.get_vehicle_moving(), state)
 
   def test_rx_hook_speed_mismatch(self):
     for speed in np.arange(0, 40, 0.5):

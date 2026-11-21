@@ -28,6 +28,9 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
   EPS_SCALE = 73
   ECU_DISABLED = True  # radar is knocked out with tester present for openpilot longitudinal
 
+  GAS_SIGNALS = ()  # PCM_CRUISE.GAS_RELEASED is inverted, see test_prev_gas
+  VEHICLE_MOVING_SIGNALS = ()  # wheel speeds are offset, so a raw zero is moving, see test_vehicle_speed_measurements
+
   def _torque_meas_msg(self, torque: int, driver_torque: int | None = None):
     values = {"STEER_TORQUE_EPS": (torque / self.EPS_SCALE) * 100.}
     if driver_torque is not None:
@@ -59,10 +62,9 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
   def _accel_msg(self, accel, cancel_req=0):
     return self._accel_msg_343(accel, cancel_req)
 
-  def _speed_msg(self, speed, quality_flag=True):
+  def _speed_msg(self, speed, faults=()):
     values = {("WHEEL_SPEED_%s" % n): speed * 3.6 for n in ["FR", "FL", "RR", "RL"]}
-    if not quality_flag:
-      values |= {"WHEEL_SPEED_%s_FAULT" % n: 1.0 for n in ["FR", "FL", "RR", "RL"]}
+    values |= {"WHEEL_SPEED_%s_FAULT" % n: 1 for n in faults}
     return self.packer.make_can_msg_safety("WHEEL_SPEEDS", 0, values)
 
   def _user_brake_msg(self, brake):
@@ -124,12 +126,10 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
       self.assertFalse(self._rx(msg))
       self.assertFalse(self.safety.get_controls_allowed())
 
-    # quality flag tests
-    msg = self._speed_msg(0)
-    self.assertTrue(self._rx(msg))
-
-    msg = self._speed_msg(0, quality_flag=False)
-    self.assertFalse(self._rx(msg))
+    # a fault on any wheel invalidates the message
+    self.assertTrue(self._rx(self._speed_msg(0)))
+    for wheel in ["FR", "FL", "RR", "RL"]:
+      self.assertFalse(self._rx(self._speed_msg(0, faults=[wheel])), wheel)
 
   def test_vehicle_speed_measurements(self):
     # OVERRIDDEN: 72.22_ is the max speed in m/s
@@ -323,6 +323,7 @@ class TestToyotaStockLongitudinalAngle(TestToyotaStockLongitudinalBase, TestToyo
 class TestToyotaSecOcSafetyBase(TestToyotaSafetyBase):
 
   DBC = "toyota_secoc_pt_generated"
+  GAS_SIGNALS = ("GAS_PEDAL_USER",)
 
   TX_MSGS = TOYOTA_SECOC_TX_MSGS
   RELAY_MALFUNCTION_ADDRS = {0: (0x2E4, 0x191, 0x412, 0x131)}

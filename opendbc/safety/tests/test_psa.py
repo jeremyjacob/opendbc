@@ -11,6 +11,9 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
   DBC = "psa_aee2010_r3"
   SAFETY_MODEL = CarParams.SafetyModel.psa
 
+  GAS_SIGNALS = ("P002_Com_rAPP",)
+  VEHICLE_MOVING_SIGNALS = ("VITESSE_VEHICULE_ROUES",)
+
   RELAY_MALFUNCTION_ADDRS = {0: (LANE_KEEP_ASSIST,)}
   FWD_BLACKLISTED_ADDRS = {2: [LANE_KEEP_ASSIST]}
   TX_MSGS = [[1010, 0]]

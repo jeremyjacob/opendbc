@@ -10,6 +10,8 @@ class TestChryslerCuswSafety(common.CarSafetyTest, common.MotorTorqueSteeringSaf
 
   TX_MSGS = [[0x1F6, 0], [0x2FA, 0], [0x5DC, 0]]
   STANDSTILL_THRESHOLD = 0
+  GAS_SIGNALS = ("GAS_HUMAN",)
+  VEHICLE_MOVING_SIGNALS = ()  # see test_vehicle_speed_bits
   RELAY_MALFUNCTION_ADDRS = {0: (0x1F6, 0x5DC)}
   FWD_BLACKLISTED_ADDRS = {2: [0x1F6, 0x5DC]}
 
@@ -58,6 +60,14 @@ class TestChryslerCuswSafety(common.CarSafetyTest, common.MotorTorqueSteeringSaf
 
       # can always cancel
       self.assertTrue(self._tx(self._button_msg(cancel=True)))
+
+  def test_vehicle_speed_bits(self):
+    # FIXME: the safety masks VEHICLE_SPEED to 11 of its 12 bits, so its top bit alone doesn't mean moving
+    for bit in range(12):
+      with self.packer.force_raw_values({"VEHICLE_SPEED": 1 << bit}):
+        msg = self._speed_msg(0)
+      self.assertTrue(self._rx(msg))
+      self.assertEqual(bit < 11, self.safety.get_vehicle_moving(), bit)
 
   def test_rx_hook(self):
     for count in range(20):

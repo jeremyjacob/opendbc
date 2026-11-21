@@ -3,8 +3,10 @@ import abc
 import math
 import unittest
 import importlib
+import itertools
 import numpy as np
 from collections.abc import Callable
+from contextlib import contextmanager
 
 from opendbc.can import CANPacker
 from opendbc.safety import ALTERNATIVE_EXPERIENCE
@@ -52,6 +54,26 @@ def state_buffer(copy):
 
 
 class CANPackerSafety(CANPacker):
+  def __init__(self, dbc_name: str):
+    super().__init__(dbc_name)
+    self.forced_raw_values: dict[str, int] = {}
+
+  @contextmanager
+  def force_raw_values(self, values: dict[str, int]):
+    """Packs these signals as these raw values, whatever a message builder sets them to."""
+    self.forced_raw_values = values
+    try:
+      yield
+    finally:
+      self.forced_raw_values = {}
+
+  def pack(self, address, values):
+    values = dict(values)
+    for name, raw in self.forced_raw_values.items():
+      sig = self.dbc.addr_to_msg[address].sigs[name]
+      values[name] = raw * sig.factor + sig.offset
+    return super().pack(address, values)
+
   def make_can_msg_safety(self, name_or_addr, bus, values, fix_checksum=None):
     msg = self.make_can_msg(name_or_addr, bus, values)
     if fix_checksum is not None:
@@ -1070,6 +1092,10 @@ class SafetyTest(SafetyTestBase):
 class CarSafetyTest(SafetyTest):
   STANDSTILL_THRESHOLD: float = 0.0
   GAS_PRESSED_THRESHOLD = 0
+
+  # the signals in _user_gas_msg and _vehicle_moving_msg that the safety decodes gas_pressed and vehicle_moving from
+  GAS_SIGNALS: tuple[str, ...]
+  VEHICLE_MOVING_SIGNALS: tuple[str, ...]
   RELAY_MALFUNCTION_ADDRS: dict[int, tuple[int, ...]]
 
   @abc.abstractmethod
@@ -1099,7 +1125,39 @@ class CarSafetyTest(SafetyTest):
   def _pcm_status_msg(self, enable):
     pass
 
+  def _test_signal_bits(self, msg_func: MessageFunction, signals: tuple[str, ...], get_state: Callable[[], bool], threshold: float):
+    """msg_func(threshold) must encode, in every listed signal, the last raw value that leaves the state off."""
+    threshold_msg = msg_func(threshold)[0]
+    sigs = self.packer.dbc.addr_to_msg[threshold_msg.addr].sigs
+    raw_thresholds = {name: sigs[name].get_raw_value(bytes(threshold_msg.data)) for name in signals}
+
+    # each signal alone at every bit, around the threshold, and at its max, so no bit can be decoded from the wrong place
+    one_signal_values = []
+    for name, raw_threshold in raw_thresholds.items():
+      size = sigs[name].size
+      raws = {0, raw_threshold, raw_threshold + 1, (1 << size) - 1} | {1 << bit for bit in range(size)}
+      one_signal_values += [{name: raw} for raw in sorted(raws)]
+
+    # every combination of signals just over the threshold, so signals can't cancel each other out, as when summed
+    combined_values = []
+    for count in range(2, len(signals) + 1):
+      for combination in itertools.combinations(signals, count):
+        combined_values.append({name: raw_thresholds[name] + 1 for name in combination})
+
+    for raw_values in one_signal_values + combined_values:
+      with self.packer.force_raw_values(raw_values):
+        msg = msg_func(0)
+      self.assertTrue(self._rx(msg), raw_values)
+      expected = any(raw > raw_thresholds[name] for name, raw in raw_values.items())
+      self.assertEqual(expected, get_state(), raw_values)
+
   # ***** standard tests for all car-specific safety modes *****
+
+  def test_gas_pressed_bits(self):
+    self._test_signal_bits(self._user_gas_msg, self.GAS_SIGNALS, self.safety.get_gas_pressed_prev, self.GAS_PRESSED_THRESHOLD)
+
+  def test_vehicle_moving_bits(self):
+    self._test_signal_bits(self._vehicle_moving_msg, self.VEHICLE_MOVING_SIGNALS, self.safety.get_vehicle_moving, self.STANDSTILL_THRESHOLD)
 
   def test_relay_malfunction(self):
     # each car has an addr that is used to detect relay malfunction
