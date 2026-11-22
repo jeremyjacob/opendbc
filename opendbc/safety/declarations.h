@@ -7,6 +7,9 @@
 #include "opendbc/safety/can.h"
 
 // from cereal.car.CarParams.SafetyModel
+// alternative experiences (see ALTERNATIVE_EXPERIENCE in __init__.py)
+#define ALT_EXP_ALWAYS_ON_LATERAL 1024
+
 #define SAFETY_SILENT 0U
 #define SAFETY_HONDA_NIDEC 1U
 #define SAFETY_TOYOTA 2U
@@ -279,6 +282,10 @@ typedef struct {
 typedef struct {
   // This can be set by the safety hooks
   bool controls_allowed;
+  // lateral-only controls: armed by the cruise main switch, survives brake/gas presses
+  // only used with ALT_EXP_ALWAYS_ON_LATERAL and safety modes that track acc_main_on
+  bool controls_allowed_lat;
+  bool acc_main_on_prev;
   bool relay_malfunction;
   bool gas_pressed;
   bool gas_pressed_prev;

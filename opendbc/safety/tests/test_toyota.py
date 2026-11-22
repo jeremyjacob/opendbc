@@ -6,6 +6,7 @@ import itertools
 
 from opendbc.car.toyota.values import ToyotaSafetyFlags
 from opendbc.car.structs import CarParams
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 
@@ -283,6 +284,96 @@ class TestToyotaAltBrakeSafety(TestToyotaSafetyTorque):
   # No LTA message in the DBC
   def test_lta_steer_cmd(self):
     pass
+
+
+class ToyotaAlwaysOnLateralMixin:
+  """Always on lateral: steering follows the cruise main switch, independent of brake/gas and stock ACC"""
+
+  def setUp(self):
+    # pandad sets the alternative experience before the safety mode, which selects the rx checks
+    self.safety = libsafety_py.libsafety
+    self.packer = common.CANPackerSafety(self.DBC)
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL)
+    self.safety.set_safety_hooks(self.SAFETY_MODEL, self.SAFETY_PARAM)
+    self.safety.init_tests()
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL)
+
+  def _main_msg(self, main_on: bool):
+    return self.packer.make_can_msg_safety("PCM_CRUISE_2", 0, {"MAIN_ON": main_on})
+
+  def test_rx_check_added(self):
+    rx_checks_len = self.safety.get_rx_checks_len()
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.DEFAULT)
+    self._reset_safety_hooks()
+    self.assertEqual(rx_checks_len, self.safety.get_rx_checks_len() + 1)
+
+  def test_main_rising_edge(self):
+    self.assertFalse(self.safety.get_controls_allowed_lat())
+    self.assertTrue(self._rx(self._main_msg(True)))
+    self.assertTrue(self.safety.get_acc_main_on())
+    self.assertTrue(self.safety.get_controls_allowed_lat())
+    self.assertFalse(self.safety.get_controls_allowed())
+
+    # steering allowed, longitudinal is not
+    self.assertTrue(self._tx(self._lat_cmd_msg()))
+    self.assertFalse(self._tx(self._accel_msg(1.0)))
+
+    # main off exits
+    self.assertTrue(self._rx(self._main_msg(False)))
+    self.assertFalse(self.safety.get_controls_allowed_lat())
+    self.assertFalse(self._tx(self._lat_cmd_msg()))
+
+  def test_pedals_dont_exit(self):
+    self._rx(self._speed_msg(20))
+    self._rx(self._main_msg(True))
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed())
+
+    for msg in (self._user_brake_msg(True), self._user_gas_msg(True)):
+      self._rx(msg)
+      self.assertTrue(self.safety.get_controls_allowed_lat())
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self._tx(self._lat_cmd_msg()))
+
+  def test_pcm_disengage_doesnt_exit(self):
+    self._rx(self._main_msg(True))
+    self._rx(self._pcm_status_msg(True))
+    self._rx(self._pcm_status_msg(False))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lat())
+
+  def test_rearm_with_cruise_engage(self):
+    # lateral-only state lost while main stays on (here, missing rx checks) is re-entered by engaging cruise
+    self._rx(self._main_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed_lat())
+    self.safety.safety_tick()
+    self.assertFalse(self.safety.get_controls_allowed_lat())
+    self._rx(self._main_msg(True))
+    self.assertFalse(self.safety.get_controls_allowed_lat())
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed_lat())
+
+  def test_disabled_without_alternative_experience(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.DEFAULT)
+    self._reset_safety_hooks()
+    self._rx(self._main_msg(True))
+    self.assertFalse(self.safety.get_controls_allowed_lat())
+    self.assertFalse(self._tx(self._lat_cmd_msg()))
+
+
+class TestToyotaAlwaysOnLateralSafety(ToyotaAlwaysOnLateralMixin, TestToyotaSafetyTorque):
+  def _lat_cmd_msg(self):
+    return self._torque_cmd_msg(self.MAX_RATE_UP)
+
+
+class TestToyotaAlwaysOnLateralAltBrakeSafety(ToyotaAlwaysOnLateralMixin, TestToyotaAltBrakeSafety):
+  def _lat_cmd_msg(self):
+    return self._torque_cmd_msg(self.MAX_RATE_UP)
+
+
+class TestToyotaAlwaysOnLateralAngleSafety(ToyotaAlwaysOnLateralMixin, TestToyotaSafetyAngle):
+  def _lat_cmd_msg(self):
+    return self._lta_msg(1, 1, 0)
 
 
 class TestToyotaStockLongitudinalBase(TestToyotaSafetyBase):

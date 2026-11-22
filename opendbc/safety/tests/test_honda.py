@@ -4,6 +4,7 @@ import numpy as np
 from collections.abc import Callable
 
 from opendbc.car.honda.values import HondaSafetyFlags
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.car.structs import CarParams
@@ -232,6 +233,15 @@ class HondaBase(common.CarSafetyTest):
       self.assertTrue(self._tx(self._send_steer_msg(0x0000)))
       self.assertEqual(controls_allowed, self._tx(self._send_steer_msg(0x1000)))
       self.assertEqual(controls_allowed, self._tx(self._send_steer_msg(1)))
+
+  def test_always_on_lateral_steer(self):
+    for aol in (False, True):
+      self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL if aol else ALTERNATIVE_EXPERIENCE.DEFAULT)
+      self._rx(self._acc_state_msg(False))
+      self._rx(self._acc_state_msg(True))
+      self.assertFalse(self.safety.get_controls_allowed())
+      self.assertEqual(aol, self.safety.get_controls_allowed_lat())
+      self.assertEqual(aol, self._tx(self._send_steer_msg(0x1000)))
 
   def test_vehicle_moving(self):
     # XMISSION_SPEED is 0.01 kph per bit: 0.01 sets only the low byte, 2.56 only the high byte

@@ -70,6 +70,10 @@ bool get_controls_allowed(void){
   return safety.controls_allowed;
 }
 
+bool get_controls_allowed_lat(void){
+  return safety.controls_allowed_lat;
+}
+
 bool get_ignition_can(void){
   return ignition_can;
 }

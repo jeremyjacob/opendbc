@@ -51,6 +51,10 @@
   {.msg = {{0x1D2, 0, 8, 33U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},                           \
   {.msg = {{0x224, 0, 8, 40U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
 
+// PCM_CRUISE_2 for cruise main state, only checked with always on lateral
+#define TOYOTA_AOL_RX_CHECK \
+  {.msg = {{0x1D3, 0, 8, 33U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
+
 #define TOYOTA_SECOC_RX_CHECKS                                                                                                             \
   TOYOTA_COMMON_RX_CHECKS(false)                                                                                                           \
   {.msg = {{0x176, 0, 8, 32U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},                           \
@@ -136,6 +140,9 @@ static void toyota_rx_hook(const CANPacket_t *msg) {
       bool cruise_engaged = GET_BIT(msg, 5U);  // PCM_CRUISE.CRUISE_ACTIVE
       pcm_cruise_check(cruise_engaged);
       safety.gas_pressed = !GET_BIT(msg, 4U);  // PCM_CRUISE.GAS_RELEASED
+    }
+    if (msg_matches(msg, 0x1D3U, 0U)) {
+      safety.acc_main_on = GET_BIT(msg, 15U);  // PCM_CRUISE_2.MAIN_ON
     }
     if (!safety_setup.toyota_alt_brake && msg_matches(msg, 0x226U, 0U)) {
       safety.brake_pressed = GET_BIT(msg, 37U);  // BRAKE_MODULE.BRAKE_PRESSED (toyota_nodsu_pt_generated.dbc)
@@ -372,6 +379,10 @@ static safety_config toyota_init(uint16_t param) {
   uint32_t eps_factor = param & TOYOTA_EPS_FACTOR;
   safety_setup.toyota_dbc_eps_torque_factor = (int)eps_factor;
 
+  // PCM_CRUISE_2 (cruise main) is only checked with always on lateral, since not all platforms send it.
+  // the alternative experience is set before the safety mode by pandad
+  const bool aol = (safety_setup.alternative_experience & ALT_EXP_ALWAYS_ON_LATERAL) != 0;
+
   safety_config ret;
   if (safety_setup.toyota_secoc) {
     if (safety_setup.toyota_stock_longitudinal) {
@@ -398,8 +409,16 @@ static safety_config toyota_init(uint16_t param) {
     static const RxCheck toyota_lta_rx_checks[] = {
       TOYOTA_RX_CHECKS(true)
     };
+    static const RxCheck toyota_lta_aol_rx_checks[] = {
+      TOYOTA_RX_CHECKS(true)
+      TOYOTA_AOL_RX_CHECK
+    };
 
-    SET_RX_CHECKS(toyota_lta_rx_checks, ret);
+    if (!aol) {
+      SET_RX_CHECKS(toyota_lta_rx_checks, ret);
+    } else {
+      SET_RX_CHECKS(toyota_lta_aol_rx_checks, ret);
+    }
   } else {
     static const RxCheck toyota_lka_rx_checks[] = {
       TOYOTA_RX_CHECKS(false)
@@ -407,11 +426,27 @@ static safety_config toyota_init(uint16_t param) {
     static const RxCheck toyota_lka_alt_brake_rx_checks[] = {
       TOYOTA_ALT_BRAKE_RX_CHECKS(false)
     };
+    static const RxCheck toyota_lka_aol_rx_checks[] = {
+      TOYOTA_RX_CHECKS(false)
+      TOYOTA_AOL_RX_CHECK
+    };
+    static const RxCheck toyota_lka_alt_brake_aol_rx_checks[] = {
+      TOYOTA_ALT_BRAKE_RX_CHECKS(false)
+      TOYOTA_AOL_RX_CHECK
+    };
 
     if (!safety_setup.toyota_alt_brake) {
-      SET_RX_CHECKS(toyota_lka_rx_checks, ret);
+      if (!aol) {
+        SET_RX_CHECKS(toyota_lka_rx_checks, ret);
+      } else {
+        SET_RX_CHECKS(toyota_lka_aol_rx_checks, ret);
+      }
     } else {
-      SET_RX_CHECKS(toyota_lka_alt_brake_rx_checks, ret);
+      if (!aol) {
+        SET_RX_CHECKS(toyota_lka_alt_brake_rx_checks, ret);
+      } else {
+        SET_RX_CHECKS(toyota_lka_alt_brake_aol_rx_checks, ret);
+      }
     }
   }
 

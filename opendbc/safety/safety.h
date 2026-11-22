@@ -72,6 +72,7 @@ SafetyCopy *current_copy = &safety_a;
 bool safety_redundancy_fault = false;
 
 static void generic_rx_checks(void);
+static void always_on_lateral_check(void);
 static void stock_ecu_check(bool stock_ecu_detected);
 
 static bool safety_states_equal(void) {
@@ -178,6 +179,7 @@ static bool rx_msg_safety_check(const CANPacket_t *msg,
   bool valid = is_msg_valid(index);
   if (!valid) {
     safety.controls_allowed = false;
+    safety.controls_allowed_lat = false;
   }
   return valid;
 }
@@ -193,6 +195,9 @@ static bool rx_hook_copy(const CANPacket_t *msg) {
 
   // Handles gas, brake, and regen paddle
   generic_rx_checks();
+
+  // lateral-only controls follow the cruise main switch
+  always_on_lateral_check();
 
   // the relay malfunction hook runs on all incoming rx messages.
   // check all applicable tx msgs for liveness on sending bus.
@@ -287,6 +292,7 @@ static void tick_copy(void) {
     if (status->lagging || !is_msg_valid(i)) {
       rx_checks_invalid = true;
       safety.controls_allowed = false;
+      safety.controls_allowed_lat = false;
     }
   }
 
@@ -318,11 +324,31 @@ static void disengage_on_press(bool pressed, bool *pressed_prev, bool while_held
 }
 
 static void generic_rx_checks(void) {
+  // a steering disengage (driver override on some platforms) exits lateral-only controls too
+  if (safety.steering_disengage) {
+    safety.controls_allowed_lat = false;
+  }
+
   safety.gas_pressed_prev = safety.gas_pressed;
   // brake and regen also exit controls while held and moving
   disengage_on_press(safety.brake_pressed, &safety.brake_pressed_prev, safety.vehicle_moving);
   disengage_on_press(safety.regen_braking, &safety.regen_braking_prev, safety.vehicle_moving);
   disengage_on_press(safety.steering_disengage, &safety.steering_disengage_prev, false);
+}
+
+// Always on lateral: enter lateral-only controls on the rising edge of the cruise main switch
+// (or whenever full controls are allowed) and exit when main turns off. Brake and gas presses do not exit.
+// Safety modes that don't track acc_main_on never enter this state.
+static void always_on_lateral_check(void) {
+  const bool aol_enabled = (safety_setup.alternative_experience & ALT_EXP_ALWAYS_ON_LATERAL) != 0;
+  if (!aol_enabled || !safety.acc_main_on) {
+    safety.controls_allowed_lat = false;
+  } else if (!safety.acc_main_on_prev || safety.controls_allowed) {
+    safety.controls_allowed_lat = true;
+  } else {
+    // keep current state
+  }
+  safety.acc_main_on_prev = safety.acc_main_on;
 }
 
 static void stock_ecu_check(bool stock_ecu_detected) {

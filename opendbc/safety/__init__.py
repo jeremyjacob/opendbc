@@ -7,3 +7,4 @@ class ALTERNATIVE_EXPERIENCE:
   DEFAULT = 0
   RAISE_LONGITUDINAL_LIMITS_TO_ISO_MAX = 8
   ALLOW_AEB = 16
+  ALWAYS_ON_LATERAL = 1024  # allow steering while cruise main is on, independent of longitudinal engagement
